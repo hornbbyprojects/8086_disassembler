@@ -7,8 +7,7 @@ then
     exit 1
 fi
 
-# directory=$(mktemp -d)
-directory="/tmp/seeme"
+directory=$(mktemp -d)
 asm_path=$directory/test.asm
 binary_path=$directory/test
 ./disassembler $1 > $asm_path

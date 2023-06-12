@@ -1,0 +1,11 @@
+#!/bin/bash -e
+to_test=(
+    "listing_0037_single_register_mov"
+    "listing_0038_many_register_mov"
+    "listing_0039_more_movs"
+    "listing_0040_challenge_movs")
+
+for testfile in ${to_test[@]}; do
+    echo "Testing $testfile"
+    ./test.sh asms/$testfile
+done
