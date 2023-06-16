@@ -1,14 +1,9 @@
+#include "arithmetic.h"
+#include "jumps.h"
+#include "shared.h"
 #include "stdio.h"
 #include "stdlib.h"
 #include <bits/types.h>
-
-unsigned char read_byte(FILE *file) {
-  unsigned char ret;
-  if (!fread(&ret, 1, 1, file)) {
-    fprintf(stderr, "Unexpected end of file\n");
-  }
-  return ret;
-}
 
 struct MovRegRM {
   unsigned char flag_d;
@@ -19,38 +14,15 @@ struct MovRegRM {
   unsigned char displacement[2];
 };
 
-unsigned char get_displacement_length(unsigned char mod, unsigned char r_m) {
-  switch (mod) {
-  case 0:
-    if (r_m == 0b110) {
-      return 2;
-    } else {
-      return 0;
-    }
-    break;
-  case 1:
-    return 1;
-  case 2:
-    return 2;
-  case 3:
-    return 0;
-  }
-  fprintf(stderr, "Unexpected mod %i\n", mod);
-  exit(-2);
-}
-
 struct MovRegRM parse_mov_reg_rm(FILE *file, unsigned char first_byte) {
   struct MovRegRM ret;
   unsigned char second_byte = read_byte(file);
-  ret.flag_d = first_byte & 0b10;
-  ret.flag_w = first_byte & 0b1;
+  ret.flag_d = (first_byte >> 1) & 1;
+  ret.flag_w = first_byte & 1;
   ret.mod = second_byte >> 6;
   ret.reg = (second_byte >> 3) & 0b111;
   ret.r_m = second_byte & 0b111;
-  unsigned char displacement_length = get_displacement_length(ret.mod, ret.r_m);
-  for (int i = 0; i < displacement_length; ++i) {
-    ret.displacement[i] = read_byte(file);
-  }
+  read_displacement(file, ret.mod, ret.r_m, ret.displacement);
   return ret;
 }
 
@@ -68,10 +40,7 @@ struct MovImmRM parse_mov_imm_rm(FILE *file, unsigned char first_byte) {
   ret.flag_w = first_byte & 1;
   ret.mod = second_byte >> 6;
   ret.r_m = second_byte & 0b111;
-  unsigned char displacement_length = get_displacement_length(ret.mod, ret.r_m);
-  for (int i = 0; i < displacement_length; ++i) {
-    ret.displacement[i] = read_byte(file);
-  }
+  read_displacement(file, ret.mod, ret.r_m, ret.displacement);
   ret.data[0] = read_byte(file);
   if (ret.flag_w) {
     ret.data[1] = read_byte(file);
@@ -130,6 +99,10 @@ enum InstructionType {
   INSTRUCTION_TYPE_MOV_IMM_REG,
   INSTRUCTION_TYPE_MOV_MEM_ACC,
   INSTRUCTION_TYPE_MOV_ACC_MEM,
+  INSTRUCTION_TYPE_BINARY_REG_RM,
+  INSTRUCTION_TYPE_BINARY_IMM_RM,
+  INSTRUCTION_TYPE_BINARY_IMM_ACC,
+  INSTRUCTION_TYPE_JUMP,
 };
 
 struct Instruction {
@@ -140,12 +113,22 @@ struct Instruction {
     struct MovImmReg mov_imm_reg;
     struct MovMemAcc mov_mem_acc;
     struct MovAccMem mov_acc_mem;
+    struct BinaryRegRM binary_reg_rm;
+    struct BinaryImmRM binary_imm_rm;
+    struct BinaryImmAcc binary_imm_acc;
+    struct Jump jump;
   };
 };
 
 struct Instruction parse_instruction(FILE *file, unsigned char first_byte) {
   struct Instruction ret;
-  if ((first_byte >> 2) == 0b100010) {
+  signed char jump_code_as_ordinal =
+    jump_code_to_ordinal(first_byte);
+  if (jump_code_as_ordinal != -1) {
+    ret.type = INSTRUCTION_TYPE_JUMP;
+    ret.jump = parse_jump(file, jump_code_as_ordinal);
+  }
+  else if ((first_byte >> 2) == 0b100010) {
     ret.type = INSTRUCTION_TYPE_MOV_REG_RM;
     ret.mov_reg_rm = parse_mov_reg_rm(file, first_byte);
   } else if ((first_byte >> 1) == 0b1100011) {
@@ -160,6 +143,15 @@ struct Instruction parse_instruction(FILE *file, unsigned char first_byte) {
   } else if ((first_byte >> 1) == 0b1010001) {
     ret.type = INSTRUCTION_TYPE_MOV_ACC_MEM;
     ret.mov_acc_mem = parse_mov_acc_mem(file, first_byte);
+  } else if (((first_byte >> 2) & 0b110001) == 0) {
+    ret.type = INSTRUCTION_TYPE_BINARY_REG_RM;
+    ret.binary_reg_rm = parse_binary_reg_rm(file, first_byte);
+  } else if ((first_byte >> 2) == 0b100000) {
+    ret.type = INSTRUCTION_TYPE_BINARY_IMM_RM;
+    ret.binary_imm_rm = parse_binary_imm_rm(file, first_byte);
+  } else if (((first_byte >> 1) & 0b1100011)  == 0b10) {
+    ret.type = INSTRUCTION_TYPE_BINARY_IMM_ACC;
+    ret.binary_imm_acc = parse_binary_imm_acc(file, first_byte);
   } else {
     fprintf(stderr, "Unrecognised first byte %i\n", first_byte);
     exit(-1);
@@ -169,65 +161,6 @@ struct Instruction parse_instruction(FILE *file, unsigned char first_byte) {
 
 // PRINTING
 
-#define NUM_REGISTER_STRINGS 8
-const char *wide_register_strings[NUM_REGISTER_STRINGS] = {
-    "ax", "cx", "dx", "bx", "sp", "bp", "si", "di"};
-const char *short_register_strings[NUM_REGISTER_STRINGS] = {
-    "al", "cl", "dl", "bl", "ah", "ch", "dh", "bh"};
-
-void print_reg(unsigned char reg, unsigned char flag_w) {
-  if (reg >= NUM_REGISTER_STRINGS) {
-    fprintf(stderr, "Invalid register %i!\n", reg);
-    exit(-1);
-  }
-  if (flag_w) {
-    printf("%s", wide_register_strings[reg]);
-  } else {
-    printf("%s", short_register_strings[reg]);
-  }
-}
-__int16_t one_byte_displacement(unsigned char bytes[2]) {
-  return (__int16_t)((signed char)bytes[0]);
-}
-__int16_t two_byte_displacement(unsigned char bytes[2]) {
-  // Second byte is the most significant
-  return ((__uint16_t)bytes[1]) << 8 | bytes[0];
-}
-#define NUM_MEMORY_R_M_STRINGS 8
-const char *memory_r_m_strings[NUM_MEMORY_R_M_STRINGS] = {
-    "BX + SI", "BX + DI", "BP + SI", "BP + DI", "SI", "DI", "BP", "BX",
-};
-void print_r_m(unsigned char r_m, unsigned char flag_w, unsigned char mod,
-               unsigned char displacement_bytes[2]) {
-  __int16_t displacement;
-  if (r_m >= NUM_MEMORY_R_M_STRINGS) {
-    fprintf(stderr, "Invalid r_m %i!\n", r_m);
-    exit(-1);
-  }
-  switch (mod) {
-  case 0:
-    if (r_m == 0b110) {
-      printf("[%i]", two_byte_displacement(displacement_bytes));
-    } else {
-      printf("[%s]", memory_r_m_strings[r_m]);
-    }
-    return;
-  case 1:
-    displacement = one_byte_displacement(displacement_bytes);
-    break;
-  case 2:
-    displacement = two_byte_displacement(displacement_bytes);
-    break;
-  case 3:
-    print_reg(r_m, flag_w);
-    return;
-  }
-  if (displacement < 0) {
-    printf("[%s - %i]", memory_r_m_strings[r_m], -displacement);
-  } else {
-    printf("[%s + %i]", memory_r_m_strings[r_m], displacement);
-  }
-}
 void print_mov_reg_rm(struct MovRegRM instruction) {
   printf("mov ");
   if (instruction.flag_d) {
@@ -245,20 +178,12 @@ void print_mov_reg_rm(struct MovRegRM instruction) {
   }
 }
 
-void print_immediate(unsigned char data[2], unsigned char flag_w) {
-  if (flag_w) {
-    printf("word %i", (((__uint16_t)data[1]) << 8) | (__uint16_t)data[0]);
-  } else {
-    printf("byte %i", (__uint8_t)data[0]);
-  }
-}
-
 void print_mov_imm_rm(struct MovImmRM instruction) {
   printf("mov ");
   print_r_m(instruction.r_m, instruction.flag_w, instruction.mod,
             instruction.displacement);
   printf(", ");
-  print_immediate(instruction.data, instruction.flag_w);
+  print_immediate(instruction.data, instruction.flag_w, 0);
   printf("\n");
 }
 
@@ -266,7 +191,7 @@ void print_mov_imm_reg(struct MovImmReg instruction) {
   printf("mov ");
   print_reg(instruction.reg, instruction.flag_w);
   printf(", ");
-  print_immediate(instruction.data, instruction.flag_w);
+  print_immediate(instruction.data, instruction.flag_w, 0);
   printf("\n");
 }
 
@@ -294,6 +219,18 @@ void print_instruction(struct Instruction instruction) {
     break;
   case INSTRUCTION_TYPE_MOV_ACC_MEM:
     print_mov_acc_mem(instruction.mov_acc_mem);
+    break;
+  case INSTRUCTION_TYPE_BINARY_REG_RM:
+    print_binary_reg_rm(instruction.binary_reg_rm);
+    break;
+  case INSTRUCTION_TYPE_BINARY_IMM_RM:
+    print_binary_imm_rm(instruction.binary_imm_rm);
+    break;
+  case INSTRUCTION_TYPE_BINARY_IMM_ACC:
+    print_binary_imm_acc(instruction.binary_imm_acc);
+    break;
+  case INSTRUCTION_TYPE_JUMP:
+    print_jump(instruction.jump);
     break;
   }
 }
