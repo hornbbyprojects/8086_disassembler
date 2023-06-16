@@ -10,7 +10,7 @@ fi
 directory=$(mktemp -d)
 asm_path=$directory/test.asm
 binary_path=$directory/test
-./disassembler $1 > $asm_path
+./disassembler disassemble $1 > $asm_path
 nasm $asm_path > $binary_path
 if cmp "$1" "$binary_path"
 then

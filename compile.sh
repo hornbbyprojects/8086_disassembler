@@ -1,3 +1,3 @@
 #!/bin/bash -e
 
-gcc -Wall ../table_disassembler/*.c -o disassembler
+gcc -Wall *.c -o disassembler
