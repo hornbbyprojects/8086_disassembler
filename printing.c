@@ -7,28 +7,28 @@ void print_register_code(u8 code, u8 flag_w) {
   if (flag_w) {
     switch ((enum RegisterCodes)code) {
     case AX:
-      printf("AX");
+      printf("ax");
       break;
     case BX:
-      printf("BX");
+      printf("bx");
       break;
     case CX:
-      printf("CX");
+      printf("cx");
       break;
     case DX:
-      printf("DX");
+      printf("dx");
       break;
     case SP:
-      printf("SP");
+      printf("sp");
       break;
     case BP:
-      printf("BP");
+      printf("bp");
       break;
     case SI:
-      printf("SI");
+      printf("si");
       break;
     case DI:
-      printf("DI");
+      printf("di");
       break;
     default:
       fprintf(stderr, "Invalid register code %i", code);
@@ -37,28 +37,28 @@ void print_register_code(u8 code, u8 flag_w) {
   } else {
     switch ((enum ShortRegisterCodes)(code)) {
     case AL:
-      printf("AL");
+      printf("al");
       break;
     case CL:
-      printf("CL");
+      printf("cl");
       break;
     case DL:
-      printf("DL");
+      printf("dl");
       break;
     case BL:
-      printf("BL");
+      printf("bl");
       break;
     case AH:
-      printf("AH");
+      printf("ah");
       break;
     case CH:
-      printf("CH");
+      printf("ch");
       break;
     case DH:
-      printf("DH");
+      printf("dh");
       break;
     case BH:
-      printf("BH");
+      printf("bh");
       break;
     default:
       fprintf(stderr, "Invalid register code %i", code);

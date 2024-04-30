@@ -1,3 +1,4 @@
 disassembler
 asms/*
+memory.data
 !asms/*.asm

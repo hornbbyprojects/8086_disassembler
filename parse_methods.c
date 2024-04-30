@@ -51,6 +51,7 @@ void read_displacement(FILE *file, struct InstructionData *instruction) {
     instruction->displacement = (i8)read_byte(file);
     return;
   case 3:
+    instruction->displacement = 0;
     break;
   default:
     fprintf(stderr, "Unexpected mod %i\n", instruction->mod);
@@ -95,6 +96,7 @@ void parse_r_m_as_memory(struct Operand *ret, struct InstructionData *data) {
   ret->memory.address_type = data->r_m;
   ret->memory.is_displaced = data->mod;
   ret->memory.displacement = data->displacement;
+  ret->memory.flag_w = data->flag_w;
 }
 
 struct Instruction instruction_from_data(struct InstructionData data) {
@@ -127,9 +129,11 @@ struct Instruction instruction_from_data(struct InstructionData data) {
         if (data.flag_d && !data.has_immediate) {
           ret.source.operand_type = OPERAND_TYPE_DIRECT_MEMORY;
           ret.source.direct_memory.displacement = data.displacement;
+          ret.source.direct_memory.flag_w = data.flag_w;
         } else {
           ret.destination.operand_type = OPERAND_TYPE_DIRECT_MEMORY;
           ret.destination.direct_memory.displacement = data.displacement;
+          ret.destination.direct_memory.flag_w = data.flag_w;
         }
       } else {
         if (data.flag_d && !data.has_immediate) {

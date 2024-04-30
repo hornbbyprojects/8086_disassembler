@@ -56,9 +56,11 @@ struct Memory {
   enum AddressType address_type;
   i16 displacement;
   u8 is_displaced;
+  u8 flag_w;
 };
 struct DirectMemory {
   i16 displacement;
+  u8 flag_w;
 };
 struct JumpDestination {
   signed char jump_destination;
